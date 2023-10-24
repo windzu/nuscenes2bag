@@ -1,10 +1,40 @@
 # nuscenes2bag
 
+convert nuscenes data to rosbag for visualization
+
+## Requirements
+
+## Create a virtual environment
+
+```bash
+conda create -n nuscenes2bag python=3.8 -y
+conda activate nuscenes2bag
+cd nuscenes2bag
+pip install -r requirements.txt
+```
+
+## Usage
+
+```bash
+ln -s xxx/nuscenes ./data
+
+
+python3 nuscenes2bag.py --scene xxx --dataroot ./data/nuscenes --version v1.0-mini --outdir ./data/nuscenes/v1.0-mini
+
+- scene : scene name (ex. scene-0001)
+- dataroot: path to the nuScenes dataset
+- version: dataset version (v1.0-mini, v1.0-trainval, v1.0-test)
+- outdir: path to output directory
+
+```
+
+## Raw Repo README
+
 > _Convert [nuScenes](https://www.nuscenes.org/) data into ROS [bag](http://wiki.ros.org/rosbag) format_
 
 ## Migrated
 
-This project is no longer maintained, it has been superseded by https://github.com/foxglove/nuscenes2mcap.
+This project is no longer maintained, it has been superseded by <https://github.com/foxglove/nuscenes2mcap>.
 
 ## Introduction
 
