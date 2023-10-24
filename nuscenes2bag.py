@@ -586,11 +586,10 @@ class Collector:
 
 
 class Nuscenes2Bag:
-    def __init__(self,scene,version,dataroot,outdir,lidar_channel="LIDAR_TOP",use_map=False,use_can=False,):
+    def __init__(self,scene,version,dataroot,lidar_channel="LIDAR_TOP",use_map=False,use_can=False,):
         self.scene_name=scene
         self.NUSCENES_VERSION=version
         self.dataroot=dataroot
-        self.outdir=outdir
 
         self.lidar_channel=lidar_channel
 
@@ -799,14 +798,13 @@ def parse_args():
     parser.add_argument('--scene', type=str, default='boston-seaport', help='scene name')
     parser.add_argument('--version', type=str, default='v1.0-mini', help='dataset version')
     parser.add_argument('--dataroot', type=str, default='./data', help='dataset root directory')
-    parser.add_argument('--outdir', type=str, default='./data', help='output bag directory')
     parser.add_argument('--lidar_channel', type=str, default='lidar-fusion', help='lidar channel')
     return parser.parse_args()
 
 def main():
     args=parse_args()
 
-    nuscenes2bag=Nuscenes2Bag(scene=args.scene,version=args.version,dataroot=args.dataroot,outdir=args.outdir,lidar_channel=args.lidar_channel,use_map=False,use_can=False)
+    nuscenes2bag=Nuscenes2Bag(scene=args.scene,version=args.version,dataroot=args.dataroot,lidar_channel=args.lidar_channel,use_map=False,use_can=False,)
     nuscenes2bag.convert()
 
 
