@@ -43,183 +43,6 @@ REFERENCE_COORDINATES = {
     "suzhou": [1.2782562240223188, 103.76741409301758],
 }
 
-
-class BitMap:
-    def __init__(self, dataroot: str, map_name: str, layer_name: str):
-        """
-        This class is used to render bitmap map layers. Currently these are:
-        - semantic_prior: The semantic prior (driveable surface and sidewalks) mask from nuScenes 1.0.
-        - basemap: The HD lidar basemap used for localization and as general context.
-
-        :param dataroot: Path of the nuScenes dataset.
-        :param map_name: Which map out of `singapore-onenorth`, `singepore-hollandvillage`, `singapore-queenstown` and
-            'boston-seaport'.
-        :param layer_name: The type of bitmap map, `semanitc_prior` or `basemap.
-        """
-        self.dataroot = dataroot
-        self.map_name = map_name
-        self.layer_name = layer_name
-
-        self.image = self.load_bitmap()
-
-    def load_bitmap(self) -> np.ndarray:
-        """
-        Load the specified bitmap.
-        """
-        # Load bitmap.
-        if self.layer_name == "basemap":
-            map_path = os.path.join(
-                self.dataroot, "maps", "basemap", self.map_name + ".png"
-            )
-        elif self.layer_name == "semantic_prior":
-            map_hashes = {
-                "singapore-onenorth": "53992ee3023e5494b90c316c183be829",
-                "singapore-hollandvillage": "37819e65e09e5547b8a3ceaefba56bb2",
-                "singapore-queenstown": "93406b464a165eaba6d9de76ca09f5da",
-                "boston-seaport": "36092f0b03a857c6a3403e25b4b7aab3",
-            }
-            map_hash = map_hashes[self.map_name]
-            map_path = os.path.join(self.dataroot, "maps", map_hash + ".png")
-        else:
-            raise Exception("Error: Invalid bitmap layer: %s" % self.layer_name)
-
-        # Convert to numpy.
-        if os.path.exists(map_path):
-            image = np.array(Image.open(map_path).convert("L"))
-        else:
-            raise Exception(
-                "Error: Cannot find %s %s! Please make sure that the map is correctly installed."
-                % (self.layer_name, map_path)
-            )
-
-        # Invert semantic prior colors.
-        if self.layer_name == "semantic_prior":
-            image = image.max() - image
-
-        return image
-
-
-def get_coordinate(
-    ref_lat: float, ref_lon: float, bearing: float, dist: float
-) -> Tuple[float, float]:
-    """
-    Using a reference coordinate, extract the coordinates of another point in space given its distance and bearing
-    to the reference coordinate. For reference, please see: https://www.movable-type.co.uk/scripts/latlong.html.
-    :param ref_lat: Latitude of the reference coordinate in degrees, ie: 42.3368.
-    :param ref_lon: Longitude of the reference coordinate in degrees, ie: 71.0578.
-    :param bearing: The clockwise angle in radians between target point, reference point and the axis pointing north.
-    :param dist: The distance in meters from the reference point to the target point.
-    :return: A tuple of lat and lon.
-    """
-    lat, lon = math.radians(ref_lat), math.radians(ref_lon)
-    angular_distance = dist / EARTH_RADIUS_METERS
-
-    target_lat = math.asin(
-        math.sin(lat) * math.cos(angular_distance)
-        + math.cos(lat) * math.sin(angular_distance) * math.cos(bearing)
-    )
-    target_lon = lon + math.atan2(
-        math.sin(bearing) * math.sin(angular_distance) * math.cos(lat),
-        math.cos(angular_distance) - math.sin(lat) * math.sin(target_lat),
-    )
-    return math.degrees(target_lat), math.degrees(target_lon)
-
-
-def derive_latlon(location: str, pose: Dict[str, float]):
-    """
-    For each pose value, extract its respective lat/lon coordinate and timestamp.
-
-    This makes the following two assumptions in order to work:
-        1. The reference coordinate for each map is in the south-western corner.
-        2. The origin of the global poses is also in the south-western corner (and identical to 1).
-    :param location: The name of the map the poses correspond to, ie: 'boston-seaport'.
-    :param poses: All nuScenes egopose dictionaries of a scene.
-    :return: A list of dicts (lat/lon coordinates and timestamps) for each pose.
-    """
-    assert (
-        location in REFERENCE_COORDINATES.keys()
-    ), f"Error: The given location: {location}, has no available reference."
-
-    coordinates = []
-    reference_lat, reference_lon = REFERENCE_COORDINATES[location]
-    ts = pose["timestamp"]
-    x, y = pose["translation"][:2]
-    bearing = math.atan(x / y)
-    distance = math.sqrt(x**2 + y**2)
-    lat, lon = get_coordinate(reference_lat, reference_lon, bearing, distance)
-    return {"latitude": lat, "longitude": lon}
-
-
-def get_transform(data):
-    t = Transform()
-    t.translation.x = data["translation"][0]
-    t.translation.y = data["translation"][1]
-    t.translation.z = data["translation"][2]
-
-    t.rotation.w = data["rotation"][0]
-    t.rotation.x = data["rotation"][1]
-    t.rotation.y = data["rotation"][2]
-    t.rotation.z = data["rotation"][3]
-
-    return t
-
-
-def get_pose(data):
-    p = Pose()
-    p.position.x = data["translation"][0]
-    p.position.y = data["translation"][1]
-    p.position.z = data["translation"][2]
-
-    p.orientation.w = data["rotation"][0]
-    p.orientation.x = data["rotation"][1]
-    p.orientation.y = data["rotation"][2]
-    p.orientation.z = data["rotation"][3]
-
-    return p
-
-
-def get_time(data):
-    t = rospy.Time()
-    t.secs, msecs = divmod(data["timestamp"], 1_000_000)
-    t.nsecs = msecs * 1000
-
-    return t
-
-
-def get_utime(data):
-    t = rospy.Time()
-    t.secs, msecs = divmod(data["utime"], 1_000_000)
-    t.nsecs = msecs * 1000
-
-    return t
-
-
-def make_point(xyz):
-    p = Point()
-    p.x = xyz[0]
-    p.y = xyz[1]
-    p.z = xyz[2]
-    return p
-
-
-def make_point2d(xy):
-    p = Point()
-    p.x = xy[0]
-    p.y = xy[1]
-    p.z = 0.0
-    return p
-
-
-def make_color(rgb, a=1):
-    c = ColorRGBA()
-    c.r = rgb[0]
-    c.g = rgb[1]
-    c.b = rgb[2]
-    c.a = a
-
-    return c
-
-
 turbo_colormap_data = [
     [0.18995, 0.07176, 0.23217],
     [0.19483, 0.08339, 0.26149],
@@ -480,6 +303,182 @@ turbo_colormap_data = [
 ]
 
 
+class BitMap:
+    def __init__(self, dataroot: str, map_name: str, layer_name: str):
+        """
+        This class is used to render bitmap map layers. Currently these are:
+        - semantic_prior: The semantic prior (driveable surface and sidewalks) mask from nuScenes 1.0.
+        - basemap: The HD lidar basemap used for localization and as general context.
+
+        :param dataroot: Path of the nuScenes dataset.
+        :param map_name: Which map out of `singapore-onenorth`, `singepore-hollandvillage`, `singapore-queenstown` and
+            'boston-seaport'.
+        :param layer_name: The type of bitmap map, `semanitc_prior` or `basemap.
+        """
+        self.dataroot = dataroot
+        self.map_name = map_name
+        self.layer_name = layer_name
+
+        self.image = self.load_bitmap()
+
+    def load_bitmap(self) -> np.ndarray:
+        """
+        Load the specified bitmap.
+        """
+        # Load bitmap.
+        if self.layer_name == "basemap":
+            map_path = os.path.join(
+                self.dataroot, "maps", "basemap", self.map_name + ".png"
+            )
+        elif self.layer_name == "semantic_prior":
+            map_hashes = {
+                "singapore-onenorth": "53992ee3023e5494b90c316c183be829",
+                "singapore-hollandvillage": "37819e65e09e5547b8a3ceaefba56bb2",
+                "singapore-queenstown": "93406b464a165eaba6d9de76ca09f5da",
+                "boston-seaport": "36092f0b03a857c6a3403e25b4b7aab3",
+            }
+            map_hash = map_hashes[self.map_name]
+            map_path = os.path.join(self.dataroot, "maps", map_hash + ".png")
+        else:
+            raise Exception("Error: Invalid bitmap layer: %s" % self.layer_name)
+
+        # Convert to numpy.
+        if os.path.exists(map_path):
+            image = np.array(Image.open(map_path).convert("L"))
+        else:
+            raise Exception(
+                "Error: Cannot find %s %s! Please make sure that the map is correctly installed."
+                % (self.layer_name, map_path)
+            )
+
+        # Invert semantic prior colors.
+        if self.layer_name == "semantic_prior":
+            image = image.max() - image
+
+        return image
+
+
+def get_coordinate(
+    ref_lat: float, ref_lon: float, bearing: float, dist: float
+) -> Tuple[float, float]:
+    """
+    Using a reference coordinate, extract the coordinates of another point in space given its distance and bearing
+    to the reference coordinate. For reference, please see: https://www.movable-type.co.uk/scripts/latlong.html.
+    :param ref_lat: Latitude of the reference coordinate in degrees, ie: 42.3368.
+    :param ref_lon: Longitude of the reference coordinate in degrees, ie: 71.0578.
+    :param bearing: The clockwise angle in radians between target point, reference point and the axis pointing north.
+    :param dist: The distance in meters from the reference point to the target point.
+    :return: A tuple of lat and lon.
+    """
+    lat, lon = math.radians(ref_lat), math.radians(ref_lon)
+    angular_distance = dist / EARTH_RADIUS_METERS
+
+    target_lat = math.asin(
+        math.sin(lat) * math.cos(angular_distance)
+        + math.cos(lat) * math.sin(angular_distance) * math.cos(bearing)
+    )
+    target_lon = lon + math.atan2(
+        math.sin(bearing) * math.sin(angular_distance) * math.cos(lat),
+        math.cos(angular_distance) - math.sin(lat) * math.sin(target_lat),
+    )
+    return math.degrees(target_lat), math.degrees(target_lon)
+
+
+def derive_latlon(location: str, pose: Dict[str, float]):
+    """
+    For each pose value, extract its respective lat/lon coordinate and timestamp.
+
+    This makes the following two assumptions in order to work:
+        1. The reference coordinate for each map is in the south-western corner.
+        2. The origin of the global poses is also in the south-western corner (and identical to 1).
+    :param location: The name of the map the poses correspond to, ie: 'boston-seaport'.
+    :param poses: All nuScenes egopose dictionaries of a scene.
+    :return: A list of dicts (lat/lon coordinates and timestamps) for each pose.
+    """
+    assert (
+        location in REFERENCE_COORDINATES.keys()
+    ), f"Error: The given location: {location}, has no available reference."
+
+    coordinates = []
+    reference_lat, reference_lon = REFERENCE_COORDINATES[location]
+    ts = pose["timestamp"]
+    x, y = pose["translation"][:2]
+    bearing = math.atan(x / y)
+    distance = math.sqrt(x**2 + y**2)
+    lat, lon = get_coordinate(reference_lat, reference_lon, bearing, distance)
+    return {"latitude": lat, "longitude": lon}
+
+
+def get_transform(data):
+    t = Transform()
+    t.translation.x = data["translation"][0]
+    t.translation.y = data["translation"][1]
+    t.translation.z = data["translation"][2]
+
+    t.rotation.w = data["rotation"][0]
+    t.rotation.x = data["rotation"][1]
+    t.rotation.y = data["rotation"][2]
+    t.rotation.z = data["rotation"][3]
+
+    return t
+
+
+def get_pose(data):
+    p = Pose()
+    p.position.x = data["translation"][0]
+    p.position.y = data["translation"][1]
+    p.position.z = data["translation"][2]
+
+    p.orientation.w = data["rotation"][0]
+    p.orientation.x = data["rotation"][1]
+    p.orientation.y = data["rotation"][2]
+    p.orientation.z = data["rotation"][3]
+
+    return p
+
+
+def get_time(data):
+    t = rospy.Time()
+    t.secs, msecs = divmod(data["timestamp"], 1_000_000)
+    t.nsecs = msecs * 1000
+
+    return t
+
+
+def get_utime(data):
+    t = rospy.Time()
+    t.secs, msecs = divmod(data["utime"], 1_000_000)
+    t.nsecs = msecs * 1000
+
+    return t
+
+
+def make_point(xyz):
+    p = Point()
+    p.x = xyz[0]
+    p.y = xyz[1]
+    p.z = xyz[2]
+    return p
+
+
+def make_point2d(xy):
+    p = Point()
+    p.x = xy[0]
+    p.y = xy[1]
+    p.z = 0.0
+    return p
+
+
+def make_color(rgb, a=1):
+    c = ColorRGBA()
+    c.r = rgb[0]
+    c.g = rgb[1]
+    c.b = rgb[2]
+    c.a = a
+
+    return c
+
+
 def turbomap(x):
     colormap = turbo_colormap_data
     x = max(0.0, min(1.0, x))
@@ -493,7 +492,7 @@ def turbomap(x):
     ]
 
 
-def get_categories(first_sample):
+def get_categories(nusc, first_sample):
     categories = set()
     sample_lidar = first_sample
     while sample_lidar is not None:
@@ -772,7 +771,7 @@ def get_tfmessage(nusc, sample, lidar_channel):
     return tf_array
 
 
-def scene_bounding_box(scene, nusc_map, padding=75.0):
+def scene_bounding_box(nusc, scene, nusc_map, padding=75.0):
     box = [np.inf, np.inf, -np.inf, -np.inf]
     cur_sample = nusc.get("sample", scene["first_sample_token"])
     while cur_sample is not None:
@@ -861,7 +860,7 @@ def get_centerline_markers(scene, nusc_map, stamp):
     return msg
 
 
-def find_closest_lidar(lidar_start_token, stamp_nsec):
+def find_closest_lidar(nusc, lidar_start_token, stamp_nsec):
     candidates = []
 
     next_lidar_token = nusc.get("sample_data", lidar_start_token)["next"]
@@ -895,320 +894,3 @@ class Collector:
         self.points.append((x1, y1))
         self.points.append((x2, y2))
         self.colors.append(color)
-
-
-class Nuscenes2Bag:
-    def __init__(
-        self,
-        scene,
-        version,
-        dataroot,
-        lidar_channel="LIDAR_TOP",
-        use_map=False,
-        use_can=False,
-    ):
-        self.scene_name = scene
-        self.NUSCENES_VERSION = version
-        self.dataroot = dataroot
-
-        self.lidar_channel = lidar_channel
-
-        self.use_map = use_map
-        self.use_can = use_can
-
-        self.nusc = NuScenes(
-            version=self.NUSCENES_VERSION, dataroot=self.dataroot, verbose=True
-        )
-        # self.nusc_can = NuScenesCanBus(dataroot='data')
-
-        self.nusc.list_scenes()
-
-    def convert(self):
-        scene = self.nusc.scene[0]
-        self.convert_scene(scene)
-
-    def convert_scene(self, scene):
-        scene_name = scene["name"]
-        log = self.nusc.get("log", scene["log_token"])
-        location = log["location"]
-
-        # TODO(wind):暂时没有map
-        if self.use_map:
-            print(f'Loading map "{location}"')
-            nusc_map = NuScenesMap(dataroot="data", map_name=location)
-            print(f'Loading bitmap "{nusc_map.map_name}"')
-            bitmap = BitMap(nusc_map.dataroot, nusc_map.map_name, "basemap")
-            print(f"Loaded {bitmap.image.shape} bitmap")
-
-        cur_sample = self.nusc.get("sample", scene["first_sample_token"])
-
-        if self.use_can:
-            can_parsers = [
-                [self.nusc_can.get_messages(scene_name, "ms_imu"), 0, get_imu_msg],
-                [self.nusc_can.get_messages(scene_name, "pose"), 0, get_odom_msg],
-                [
-                    self.nusc_can.get_messages(scene_name, "steeranglefeedback"),
-                    0,
-                    lambda x: get_basic_can_msg("Steering Angle", x),
-                ],
-                [
-                    self.nusc_can.get_messages(scene_name, "vehicle_monitor"),
-                    0,
-                    lambda x: get_basic_can_msg("Vehicle Monitor", x),
-                ],
-                [
-                    self.nusc_can.get_messages(scene_name, "zoesensors"),
-                    0,
-                    lambda x: get_basic_can_msg("Zoe Sensors", x),
-                ],
-                [
-                    self.nusc_can.get_messages(scene_name, "zoe_veh_info"),
-                    0,
-                    lambda x: get_basic_can_msg("Zoe Vehicle Info", x),
-                ],
-            ]
-
-        bag_name = f"NuScenes-{self.NUSCENES_VERSION}-{scene_name}.bag"
-        # bag_path = os.path.join(os.path.abspath(os.curdir), bag_name)
-        bag_path = os.path.join(self.dataroot, bag_name)
-        print(f"Writing to {bag_path}")
-        bag = rosbag.Bag(bag_path, "w", compression="lz4")
-
-        stamp = get_time(
-            self.nusc.get(
-                "ego_pose",
-                self.nusc.get("sample_data", cur_sample["data"][self.lidar_channel])[
-                    "ego_pose_token"
-                ],
-            )
-        )
-
-        if self.use_map:
-            map_msg = get_scene_map(scene, nusc_map, bitmap, stamp)
-            centerlines_msg = get_centerline_markers(scene, nusc_map, stamp)
-            bag.write("/map", map_msg, stamp)
-            bag.write("/semantic_map", centerlines_msg, stamp)
-        last_map_stamp = stamp
-
-        while cur_sample is not None:
-            sample_lidar = self.nusc.get(
-                "sample_data", cur_sample["data"][self.lidar_channel]
-            )
-            ego_pose = self.nusc.get("ego_pose", sample_lidar["ego_pose_token"])
-            stamp = get_time(ego_pose)
-
-            # write map topics every two seconds
-            if self.use_map:
-                if stamp - rospy.Duration(2.0) >= last_map_stamp:
-                    map_msg.header.stamp = stamp
-                    for marker in centerlines_msg.markers:
-                        marker.header.stamp = stamp
-                    bag.write("/map", map_msg, stamp)
-                    bag.write("/semantic_map", centerlines_msg, stamp)
-                    last_map_stamp = stamp
-
-            # write CAN messages to /pose, /odom, and /diagnostics
-            if self.use_can:
-                can_msg_events = []
-                for i in range(len(can_parsers)):
-                    (can_msgs, index, msg_func) = can_parsers[i]
-                    while index < len(can_msgs) and get_utime(can_msgs[index]) < stamp:
-                        can_msg_events.append(msg_func(can_msgs[index]))
-                        index += 1
-                        can_parsers[i][1] = index
-                can_msg_events.sort(key=lambda x: x[0])
-                for msg_stamp, topic, msg in can_msg_events:
-                    bag.write(topic, msg, stamp)
-
-            # publish /tf
-            tf_array = get_tfmessage(self.nusc, cur_sample, self.lidar_channel)
-            bag.write("/tf", tf_array, stamp)
-
-            # /driveable_area occupancy grid
-            if self.use_map:
-                write_occupancy_grid(bag, nusc_map, ego_pose, stamp)
-
-            # iterate sensors
-            for sensor_id, sample_token in cur_sample["data"].items():
-                sample_data = self.nusc.get("sample_data", sample_token)
-                topic = "/" + sensor_id
-
-                # write the sensor data
-                if sample_data["sensor_modality"] == "lidar":
-                    msg = get_lidar(self.dataroot, sample_data, sensor_id)
-                    bag.write(topic, msg, stamp)
-                elif sample_data["sensor_modality"] == "camera":
-                    msg = get_camera(self.dataroot, sample_data, sensor_id)
-                    bag.write(topic + "/image_rect_compressed", msg, stamp)
-                    msg = get_camera_info(self.nusc, sample_data, sensor_id)
-                    bag.write(topic + "/camera_info", msg, stamp)
-
-                if sample_data["sensor_modality"] == "camera":
-                    msg = get_lidar_imagemarkers(
-                        self.nusc, sample_lidar, sample_data, sensor_id
-                    )
-                    bag.write(topic + "/image_markers_lidar", msg, stamp)
-                    write_boxes_imagemarkers(
-                        self.nusc,
-                        bag,
-                        cur_sample["anns"],
-                        sample_data,
-                        sensor_id,
-                        topic,
-                        stamp,
-                    )
-
-            # publish /pose
-            pose_stamped = PoseStamped()
-            pose_stamped.header.frame_id = "base_link"
-            pose_stamped.header.stamp = stamp
-            pose_stamped.pose.orientation.w = 1
-            bag.write("/pose", pose_stamped, stamp)
-
-            # publish /gps
-            coordinates = derive_latlon(location, ego_pose)
-            gps = NavSatFix()
-            gps.header.frame_id = "base_link"
-            gps.header.stamp = stamp
-            gps.status.status = 1
-            gps.status.service = 1
-            gps.latitude = coordinates["latitude"]
-            gps.longitude = coordinates["longitude"]
-            gps.altitude = get_transform(ego_pose).translation.z
-            bag.write("/gps", gps, stamp)
-
-            # publish /markers/annotations
-            marker_array = MarkerArray()
-            for annotation_id in cur_sample["anns"]:
-                ann = self.nusc.get("sample_annotation", annotation_id)
-                marker_id = int(ann["instance_token"][:4], 16)
-                c = np.array(self.nusc.explorer.get_color(ann["category_name"])) / 255.0
-
-                marker = Marker()
-                marker.header.frame_id = "map"
-                marker.header.stamp = stamp
-                marker.id = marker_id
-                marker.text = ann["instance_token"][:4]
-                marker.type = Marker.CUBE
-                marker.pose = get_pose(ann)
-                marker.frame_locked = False  # False
-                marker.scale.x = ann["size"][1]
-                marker.scale.y = ann["size"][0]
-                marker.scale.z = ann["size"][2]
-                marker.color = make_color(c, 0.5)
-                marker_array.markers.append(marker)
-            bag.write("/markers/annotations", marker_array, stamp)
-
-            # collect all sensor frames after this sample but before the next sample
-            non_keyframe_sensor_msgs = []
-            for sensor_id, sample_token in cur_sample["data"].items():
-                topic = "/" + sensor_id
-
-                next_sample_token = self.nusc.get("sample_data", sample_token)["next"]
-                while next_sample_token != "":
-                    next_sample_data = self.nusc.get("sample_data", next_sample_token)
-                    # if next_sample_data['is_key_frame'] or get_time(next_sample_data).to_nsec() > next_stamp.to_nsec():
-                    #     break
-                    if next_sample_data["is_key_frame"]:
-                        break
-
-                    if next_sample_data["sensor_modality"] == "lidar":
-                        msg = get_lidar(next_sample_data, sensor_id)
-                        non_keyframe_sensor_msgs.append(
-                            (msg.header.stamp.to_nsec(), topic, msg)
-                        )
-                    elif next_sample_data["sensor_modality"] == "camera":
-                        msg = get_camera(next_sample_data, sensor_id)
-                        camera_stamp_nsec = msg.header.stamp.to_nsec()
-                        non_keyframe_sensor_msgs.append(
-                            (camera_stamp_nsec, topic + "/image_rect_compressed", msg)
-                        )
-
-                        msg = get_camera_info(next_sample_data, sensor_id)
-                        non_keyframe_sensor_msgs.append(
-                            (camera_stamp_nsec, topic + "/camera_info", msg)
-                        )
-
-                        closest_lidar = find_closest_lidar(
-                            cur_sample["data"][self.lidar_channel], camera_stamp_nsec
-                        )
-                        if closest_lidar is not None:
-                            msg = get_lidar_imagemarkers(
-                                closest_lidar, next_sample_data, sensor_id
-                            )
-                            non_keyframe_sensor_msgs.append(
-                                (
-                                    msg.header.stamp.to_nsec(),
-                                    topic + "/image_markers_lidar",
-                                    msg,
-                                )
-                            )
-                        else:
-                            msg = get_remove_imagemarkers(
-                                sensor_id, self.lidar_channel, msg.header.stamp
-                            )
-                            non_keyframe_sensor_msgs.append(
-                                (
-                                    msg.header.stamp.to_nsec(),
-                                    topic + "/image_markers_lidar",
-                                    msg,
-                                )
-                            )
-
-                        # Delete all image markers on non-keyframe camera images
-                        # msg = get_remove_imagemarkers(sensor_id, 'LIDAR_TOP', msg.header.stamp)
-                        # non_keyframe_sensor_msgs.append((camera_stamp_nsec, topic + '/image_markers_lidar', msg))
-                        # msg = get_remove_imagemarkers(sensor_id, 'annotations', msg.header.stamp)
-                        # non_keyframe_sensor_msgs.append((camera_stamp_nsec, topic + '/image_markers_annotations', msg))
-
-                    next_sample_token = next_sample_data["next"]
-
-            # sort and publish the non-keyframe sensor msgs
-            non_keyframe_sensor_msgs.sort(key=lambda x: x[0])
-            for _, topic, msg in non_keyframe_sensor_msgs:
-                bag.write(topic, msg, msg.header.stamp)
-
-            # move to the next sample
-            cur_sample = (
-                self.nusc.get("sample", cur_sample["next"])
-                if cur_sample.get("next") != ""
-                else None
-            )
-
-        bag.close()
-        print(f"Finished writing {bag_name}")
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Convert NuScenes dataset to ROS bag.")
-    parser.add_argument(
-        "--scene", type=str, default="boston-seaport", help="scene name"
-    )
-    parser.add_argument(
-        "--version", type=str, default="v1.0-mini", help="dataset version"
-    )
-    parser.add_argument(
-        "--dataroot", type=str, default="./data", help="dataset root directory"
-    )
-    parser.add_argument(
-        "--lidar_channel", type=str, default="lidar-fusion", help="lidar channel"
-    )
-    return parser.parse_args()
-
-
-def main():
-    args = parse_args()
-
-    nuscenes2bag = Nuscenes2Bag(
-        scene=args.scene,
-        version=args.version,
-        dataroot=args.dataroot,
-        lidar_channel=args.lidar_channel,
-        use_map=False,
-        use_can=False,
-    )
-    nuscenes2bag.convert()
-
-
-if __name__ == "__main__":
-    main()
