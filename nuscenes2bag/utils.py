@@ -40,7 +40,10 @@ REFERENCE_COORDINATES = {
     "singapore-onenorth": [1.2882100868743724, 103.78475189208984],
     "singapore-hollandvillage": [1.2993652317780957, 103.78217697143555],
     "singapore-queenstown": [1.2782562240223188, 103.76741409301758],
-    "suzhou": [1.2782562240223188, 103.76741409301758],
+    "suzhou": [31.314459, 120.766274],
+}
+ZONE_OFFSET = {
+    "SISPARK": [-858.990, -3469.840],
 }
 
 turbo_colormap_data = [
@@ -384,7 +387,7 @@ def get_coordinate(
     return math.degrees(target_lat), math.degrees(target_lon)
 
 
-def derive_latlon(location: str, pose: Dict[str, float]):
+def derive_latlon(location: str, pose: Dict[str, float], area="SISPARK"):
     """
     For each pose value, extract its respective lat/lon coordinate and timestamp.
 
@@ -403,6 +406,11 @@ def derive_latlon(location: str, pose: Dict[str, float]):
     reference_lat, reference_lon = REFERENCE_COORDINATES[location]
     ts = pose["timestamp"]
     x, y = pose["translation"][:2]
+
+    # if area in ZONE_OFFSET.keys():
+    #     x += ZONE_OFFSET[area][0]
+    #     y += ZONE_OFFSET[area][1]
+
     bearing = math.atan(x / y)
     distance = math.sqrt(x**2 + y**2)
     lat, lon = get_coordinate(reference_lat, reference_lon, bearing, distance)

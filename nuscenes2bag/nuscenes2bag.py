@@ -39,7 +39,6 @@ from .utils import (
     derive_latlon,
     find_closest_lidar,
     get_basic_can_msg,
-    get_boxes_imagemarkers,
     get_camera,
     get_camera_info,
     get_centerline_markers,
@@ -258,6 +257,7 @@ class Nuscenes2Bag:
                 marker.scale.x = ann["size"][1]
                 marker.scale.y = ann["size"][0]
                 marker.scale.z = ann["size"][2]
+                marker.lifetime = rospy.Duration(0.2)
                 marker.color = make_color(c, 0.5)
                 marker_array.markers.append(marker)
             bag.write("/markers/annotations", marker_array, stamp)
@@ -323,7 +323,6 @@ class Nuscenes2Bag:
                         # non_keyframe_sensor_msgs.append((camera_stamp_nsec, topic + '/image_markers_lidar', msg))
                         # msg = get_remove_imagemarkers(sensor_id, 'annotations', msg.header.stamp)
                         # non_keyframe_sensor_msgs.append((camera_stamp_nsec, topic + '/image_markers_annotations', msg))
-
                     next_sample_token = next_sample_data["next"]
 
             # sort and publish the non-keyframe sensor msgs

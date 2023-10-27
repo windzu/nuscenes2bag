@@ -16,16 +16,13 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
-ln -s xxx/nuscenes ./data
 
-
-python3 nuscenes2bag.py --scene test --version v1.0-trainval --dataroot /home/wind/Projects/ppt_roscenes_ws/nuscenes
-
-python3 nuscenes2bag.py --scene xxx --dataroot ./data/nuscenes --version v1.0-mini --outdir ./data/nuscenes/v1.0-mini
+nuscenes2bag --scene test --dataroot xxx/nuscenes --version v1.0-trainval
 
 - scene : scene name (ex. scene-0001)
 - dataroot: path to the nuScenes dataset
 - version: dataset version (v1.0-mini, v1.0-trainval, v1.0-test)
+- lidar_channel : lidar channel name (ex. LIDAR_TOP,default: lidar-fusion)
 
 ```
 
