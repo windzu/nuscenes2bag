@@ -62,17 +62,16 @@ from .utils import (
 class Nuscenes2Bag:
     def __init__(
         self,
-        scene,
         version,
         dataroot,
+        scene_name=None,
         lidar_channel="LIDAR_TOP",
         use_map=False,
         use_can=False,
     ):
-        self.scene_name = scene
         self.NUSCENES_VERSION = version
         self.dataroot = dataroot
-
+        self.scene_name = scene_name
         self.lidar_channel = lidar_channel
 
         self.use_map = use_map
@@ -89,11 +88,16 @@ class Nuscenes2Bag:
         scene = None
         if self.scene_name is not None:
             # check if scene exists
-            if self.scene_name not in self.nusc.scene_name2idx:
+            for tmp_scene in self.nusc.scene:
+                if tmp_scene["name"] == self.scene_name:
+                    scene = tmp_scene
+                    break
+
+            if scene is None:
                 print(f"Error: scene {self.scene_name} does not exist")
                 return
-            scene = self.nusc.scene[self.nusc.scene_name2idx[self.scene_name]]
         else:
+            print("Warning: no scene specified, using first scene")
             scene = self.nusc.scene[0]
         self.convert_scene(scene)
 
@@ -353,15 +357,14 @@ class Nuscenes2Bag:
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Convert NuScenes dataset to ROS bag.")
+
     parser.add_argument(
-        "--scene", type=str, default="boston-seaport", help="scene name"
+        "--dataroot", type=str, default="./data", help="dataset root directory"
     )
     parser.add_argument(
         "--version", type=str, default="v1.0-mini", help="dataset version"
     )
-    parser.add_argument(
-        "--dataroot", type=str, default="./data", help="dataset root directory"
-    )
+    parser.add_argument("--scene", type=str, default=None, help="scene name")
     parser.add_argument(
         "--lidar_channel", type=str, default="lidar-fusion", help="lidar channel"
     )
@@ -372,9 +375,9 @@ def main():
     args = parse_args()
 
     nuscenes2bag = Nuscenes2Bag(
-        scene=args.scene,
         version=args.version,
         dataroot=args.dataroot,
+        scene_name=args.scene,
         lidar_channel=args.lidar_channel,
         use_map=False,
         use_can=False,
