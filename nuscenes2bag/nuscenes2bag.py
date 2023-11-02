@@ -86,11 +86,21 @@ class Nuscenes2Bag:
         self.nusc.list_scenes()
 
     def convert(self):
-        scene = self.nusc.scene[0]
+        scene = None
+        if self.scene_name is not None:
+            # check if scene exists
+            if self.scene_name not in self.nusc.scene_name2idx:
+                print(f"Error: scene {self.scene_name} does not exist")
+                return
+            scene = self.nusc.scene[self.nusc.scene_name2idx[self.scene_name]]
+        else:
+            scene = self.nusc.scene[0]
         self.convert_scene(scene)
 
     def convert_scene(self, scene):
         scene_name = scene["name"]
+        print(f"Converting scene {scene_name}...")
+
         log = self.nusc.get("log", scene["log_token"])
         location = log["location"]
 

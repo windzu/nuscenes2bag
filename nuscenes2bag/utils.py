@@ -411,7 +411,9 @@ def derive_latlon(location: str, pose: Dict[str, float], area="SISPARK"):
     #     x += ZONE_OFFSET[area][0]
     #     y += ZONE_OFFSET[area][1]
 
-    bearing = math.atan(x / y)
+    # bearing = math.atan(x / y)
+    bearing = math.atan2(x, y)
+
     distance = math.sqrt(x**2 + y**2)
     lat, lon = get_coordinate(reference_lat, reference_lon, bearing, distance)
     return {"latitude": lat, "longitude": lon}
